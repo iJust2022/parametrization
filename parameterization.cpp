@@ -7,6 +7,10 @@ parameterization::parameterization() {
 parameterization::~parameterization(){
 
 }
+bool parameterization::Triplet::operator<(const Triplet& rhs) const {
+	return col < rhs.col;
+}
+
 
 void parameterization::Parameterization(mesh& mesh){
 	if (!has_boundary(mesh)) {
@@ -22,13 +26,14 @@ void parameterization::Parameterization(mesh& mesh){
 	int m = mesh.vfh_size("face");
 	int n = mesh.vfh_size("vertex") - 2;
 	/*Eigen::MatrixXd x = eigen_create_matrix_solver(mesh, free_vertexs, v1, v2, m, n);
+	Eigen::MatrixXd x = sparse_matrix_solving(mesh, free_vertexs, v1, v2, m, n);   //sparse_matrix_solving
 	for (int i = 0; i < mesh.vfh_size("vertex"); i++) {
 		if (mesh.get_locked(i) == false) {
 			int i_idx = free_vertexs[i];
 			mesh.set_tex(i, x(i_idx, 0), x(i_idx + n, 0));
 		}
 	}*/
-	double** x = create_matrix_solver(mesh, free_vertexs, v1, v2, m, n);
+	double** x = sparse_matrix_solving(mesh, free_vertexs, v1, v2, m, n);
 	for (int i = 0; i < mesh.vfh_size("vertex"); i++) {
 		if (mesh.get_locked(i) == false) {
 			int i_idx = free_vertexs[i];
@@ -67,9 +72,13 @@ void parameterization::setup_lscm_boundary(mesh& mesh, int& v1, int& v2){
 			boundary.push_back(i);
 		}
 	}
+	/*v1 = boundary[0];
+	v2 = boundary[1];*/
 	double d_max = 0;
-	for (int vv1 = 0; vv1 < boundary.size(); vv1++) {
-		for (int vv2 = 0; vv2 < boundary.size(); vv2++) {
+	for (int i = 0; i < boundary.size(); i++) {
+		for (int j = 0; j < boundary.size(); j++) {
+			int vv1 = boundary[i];
+			int vv2 = boundary[j];
 			double d = mesh.distance(vv1, vv2);
 			if (d > d_max) {
 				d_max = d;
@@ -507,18 +516,7 @@ Eigen::MatrixXd parameterization::eigen_create_matrix_solver(mesh& mesh, std::ve
 			}
 		}
 	}
-	/*for (int i = 0; i < 2 * m; i++) {
-		for (int j = 0; j < 2 * n; j++) {
-			std::cout << A(i, j) << " ";
-		}
-		std::cout << std::endl;
-	}*/
-	/*for (int i = 0; i < 2 * m; i++) {
-		for (int j = 0; j < 4; j++) {
-			std::cout << B(i, j) << " ";
-		}
-		std::cout << std::endl;
-	}*/
+	
 	Up(0, 0) = mesh.get_tex(v1, "u");
 	Up(1, 0) = mesh.get_tex(v2, "u");
 	Up(2, 0) = mesh.get_tex(v1, "v");
@@ -529,23 +527,192 @@ Eigen::MatrixXd parameterization::eigen_create_matrix_solver(mesh& mesh, std::ve
 			b(i, j) = -b(i, j);
 		}
 	}
+	
 	Eigen::MatrixXd x = (A.transpose() * A).inverse() * (A.transpose() * b);
-	/*for (int i = 0; i < 2 * m; i++) {
-		for (int j = 0; j < 1; j++) {
-			std::cout << x(i, j) << " ";
-		}
-		std::cout << std::endl;
-	}*/
+	show_matrix(A.transpose() * A, 2 * n, 2 * n);
 	return x;
 }
 
-void parameterization::show_matrix(double** A, int m, int n){
+void parameterization::show_matrix(Eigen::MatrixXd A, int m, int n){
+	std::fstream f;
+	f.open("C:\\Users\\ÑîºÀ\\Desktop\\matrix.txt", std::ios::out);
+	//int sum = 0;
 	for (int i = 0; i < m; i++) {
 		for (int j = 0; j < n; j++) {
-			std::cout << A[i][j] << " ";
+			f << A(i,j) << " ";
+			/*if (A(i, j) != 0) {
+				sum++;
+			}*/
 		}
-		std::cout << std::endl;
+		f << std::endl;
 	}
+	f.close();
+	//std::cout << sum << std::endl;
+}
+
+double** parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> free_vertexs, int v1, int v2, int m, int n){
+	int nv = mesh.vfh_size("vertex");
+	int nv2 = 2 * nv;
+	
+	double** b = new double* [2 * n];
+	for (int i = 0; i < 2 * n; i++) {
+		b[i] = new double[1];
+		for (int j = 0; j < 1; j++) {
+			b[i][j] = 0;
+		}
+	}
+	
+	//Eigen::SparseMatrix<double> A(2 * n, 2 * n);
+	//Eigen::VectorXd b = Eigen::VectorXd::Zero(2 * n);
+	std::vector<Triplet> triplets;
+	int row = 0;
+	for (unsigned int i = 0; i < nv2; i++) {
+		int vi = i % nv;
+		int sign;
+		std::string  c0, c1;
+		if (i < nv){
+			sign = 1.0;
+			c0 = "r";
+			c1 = "i";
+		}
+		else{
+			sign = -1.0;
+			c0 = "i";
+			c1 = "r";
+		}
+		if (mesh.get_locked(vi) == false) {
+			double si = 0;
+			int h = mesh.out_halfedge(vi);
+			const int hh = h;
+			if (mesh.is_valid(h)) {
+				std::vector<bool> is_select;
+				is_select.resize(nv, false);
+				do {
+					int f = mesh.get_face(h);
+					int fi, vj;
+					double sj0, sj1;
+					if (mesh.is_valid(f)) {
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) == vi) {
+								fi = l;
+								si += mesh.get_face_W(f, l, "r") * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, l, "i") * mesh.get_face_W(f, l, "i");
+							}
+						}
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) != vi) {
+								vj = mesh.get_face_p(f, l);
+								if (is_select[vj] == false) {
+									is_select[vj] = true;
+									sj0 = 0;
+									sj1 = 0;
+									sj0 += sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "i");
+									sj1 += -sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "i") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "r");
+									int h0 = mesh.get_face_halfedge(f);
+									while (mesh.to_vertex(h0) != vj) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									if (mesh.to_vertex(mesh.next_halfedge(h0)) == vi) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									int ff = mesh.get_face(mesh.opposite_halfedge(h0));
+									if (mesh.is_valid(ff)) {
+										int li = 0, lj = 0;
+										for (int k = 0; k < 3; k++) {
+											if (mesh.get_face_p(ff, k) == vi) {
+												li = k;
+											}
+											if (mesh.get_face_p(ff, k) == vj) {
+												lj = k;
+											}
+										}
+										sj0 += sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "r") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "i");
+										sj1 += -sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "i") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "r");
+									}
+									if (mesh.get_locked(vj) == false) {
+										triplets.emplace_back(row, free_vertexs[vj], sj0);
+										triplets.emplace_back(row, free_vertexs[vj] + n, sj1);
+									}
+									else {
+										b[row][0] -= sj0 * mesh.get_tex(vj, "u");
+										b[row][0] -= sj1 * mesh.get_tex(vj, "v");
+									}
+								}
+							}
+						}
+					}
+					h = mesh.next_halfedge(mesh.opposite_halfedge(h));
+				} while (h != hh);
+			}
+			triplets.emplace_back(row, free_vertexs[vi] + (i < nv ? 0 : n), si);
+			row++;
+		}
+	}
+	//show_matrix(b, 2 * n, 1);
+
+	std::vector<double> D(2 * n, 0.0);
+	std::vector<std::vector<double>> L(n, std::vector<double>(2 * n, 0.0));
+
+	for (int j = 0; j < n; j++) {
+		double sum = 0.0;
+		for (int p = triplets[j].row; p < triplets[j + 1].row; p++) {
+			int i = triplets[p].col;
+			double l_ij = triplets[p].value;
+			for (int k = 0; k < j; k++) {
+				l_ij -= L[i][k] * L[j][k] * D[k];
+			}
+			if (i == j) {
+				D[i] = l_ij;
+				L[i][i] = 1.0;
+			}
+			else {
+				L[i][j] = l_ij / D[j];
+			}
+			sum += L[i][j] * L[i][j] * D[j];
+		}
+		D[j] -= sum;
+	}
+
+
+
+	/*std::vector<std::vector<Triplet>> A;
+	for (int i = 0; i < triplets.size(); i++) {
+		A[triplets[i].row].push_back(triplets[i]);
+	}
+	for (int i = 0; i < A.size(); i++) {
+		sort(A[i].begin(), A[i].end());
+	}
+	for (int i = 0; i < n; i++) {
+		double di = 0.0;
+		for (int j = 0; j <A[i].size(); j++) {
+			if (A[i][j].col == i) {
+				di = A[i][j].value;
+			}
+			double sum = 0.0;
+			for (int k = 0; L[i][k].col < A[i][j].col; k++) {
+				for (int l = 0; l < L[A[i][j].col].size(); l++) {
+					if (L[i][k].col == L[A[i][j].col][l].col) {
+						sum += L[i][k].value * D[L[i][k].col] * L[A[i][j].col][l].value;
+					}
+				}
+			}
+			L[i].emplace_back(i, A[i][j].col, (i == j) ? 1.0 : (A[i][j].value - sum) / D[j]);
+		}
+		double sum = 0.0;
+		for (int k = 0; k < i; ++k) {
+			sum += L[i][k].value * L[i][k].value * D[L[i][k].col];
+		}
+		D[i] = di - sum;
+	}*/
+
+
+	
+	/*A.setFromTriplets(triplets.begin(), triplets.end());
+	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(A);
+	Eigen::VectorXd x = solver.solve(b);*/
+	
+	double** x;
+	//show_matrix(x, 2 * n, 1);
+	return b;
 }
 
 

@@ -73,9 +73,9 @@ void io::read_off(std::string file, mesh& mesh) {
         has_dim = true;
         c++;
     }
-    /*std::string is_off="";
+    std::string is_off;
     for (int i = 0; i < 3; i++) {
-        is_off += std::to_string("val[c]");
+        is_off.push_back(val[c]);
         c++;
     }
     if (is_off.compare("OFF") != 0)
@@ -84,14 +84,16 @@ void io::read_off(std::string file, mesh& mesh) {
         auto what = "Failed to parse OFF header";
         throw what;
     }
-    char is_binary[6];
-    for (int i = 0; i < 6; i++) {
-        is_binary[i] = val[c];
-        c++;
+    if (c + 6 == val.size()) {
+        std::string is_binary;
+        for (int i = 0; i < 6; i++) {
+            is_binary.push_back(val[c]);
+            c++;
+        }
+        if (is_binary.compare("BINARY") == 0) {
+            is_Binary = true;
+        }
     }
-    if (strcmp(is_binary, "BINARY") == 0)
-        is_Binary = true;*/
-
     if (has_hcoords == true) {
         in.close();
         auto what = "Error: Homogeneous coordinates not supported.";

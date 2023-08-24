@@ -5,6 +5,7 @@
 #include<iostream>
 #include<Eigen/Dense>
 #include<Eigen/LU>
+#include <Eigen/Sparse>
 
 #pragma once
 class parameterization{
@@ -29,6 +30,15 @@ private:
 	double** Principal_component_selection(double** A, int n);
 	double** LU_decomposition_inverse(double** A, int n);
 	Eigen::MatrixXd eigen_create_matrix_solver(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
-	void show_matrix(double** A, int m, int n);
+	void show_matrix(Eigen::MatrixXd A, int m, int n);
+	double** sparse_matrix_solving(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
+	struct Triplet {
+		int row;
+		int col;
+		double value;
+		Triplet(int row, int col, double value)
+			: row(row), col(col), value(value) {}
+		bool operator<(const Triplet& rhs) const;
+	};
 };
 

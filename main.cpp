@@ -22,6 +22,6 @@ int main() {
     }
     parameterization parameterization;
     parameterization.Parameterization(mesh);
-    io.write("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti_test.off", mesh);
+    io.write("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti.off", mesh);      //nefertiti  merged_submaps_repair
     return 0;
 }

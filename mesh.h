@@ -97,7 +97,7 @@ private:
 
 	struct FaceProperty {
 		Face face;
-		int p[3];  //面的三个点
+		int p[3]; //面的三个点
 		W W[3];  //每个点的w的实数部分和虚数部分
 	};
 	
