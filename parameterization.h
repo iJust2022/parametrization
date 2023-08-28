@@ -6,6 +6,9 @@
 #include<Eigen/Dense>
 #include<Eigen/LU>
 #include <Eigen/Sparse>
+#include <functional>
+#include <unordered_map>
+#include <windows.h> 
 
 #pragma once
 class parameterization{
@@ -14,6 +17,28 @@ public:
 	~parameterization();
 	void Parameterization(mesh& mesh);
 private:
+	struct Triplet {
+		int row;
+		int col;
+		double value;
+		Triplet(int row, int col, double value)
+			: row(row), col(col), value(value) {}
+		bool operator<(const Triplet& rhs) const;
+	};
+	struct Key {
+		int row;
+		int col;
+		size_t operator()(const Key& key) const {
+			size_t h1 = std::hash<int>{}(key.row);
+			size_t h2 = std::hash<int>{}(key.col);
+			return h1 ^ (h2 << 1);
+		}
+		bool operator==(const Key& rhs) const {
+			return row == rhs.row && col == rhs.col;
+		}
+	};
+
+
 	bool has_boundary(mesh& mesh);
 	void setup_lscm_boundary(mesh& mesh, int& v1, int& v2);
 	void count_allface_w(mesh& mesh);
@@ -31,14 +56,10 @@ private:
 	double** LU_decomposition_inverse(double** A, int n);
 	Eigen::MatrixXd eigen_create_matrix_solver(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
 	void show_matrix(Eigen::MatrixXd A, int m, int n);
-	double** sparse_matrix_solving(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
-	struct Triplet {
-		int row;
-		int col;
-		double value;
-		Triplet(int row, int col, double value)
-			: row(row), col(col), value(value) {}
-		bool operator<(const Triplet& rhs) const;
-	};
+	std::vector<double> sparse_matrix_solving(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
+	void tripletToCSC(const std::vector<Triplet>& triplets, int n_rows, int n_cols, std::vector<int>& column_pointers, std::vector<int>& row_indices, std::vector<double>& nonzero_values);
+
+
+	
 };
 

@@ -33,11 +33,18 @@ void parameterization::Parameterization(mesh& mesh){
 			mesh.set_tex(i, x(i_idx, 0), x(i_idx + n, 0));
 		}
 	}*/
-	double** x = sparse_matrix_solving(mesh, free_vertexs, v1, v2, m, n);
+	LARGE_INTEGER BegainTime;
+	LARGE_INTEGER EndTime;
+	LARGE_INTEGER Frequency;
+	QueryPerformanceFrequency(&Frequency);
+	QueryPerformanceCounter(&BegainTime);
+	std::vector<double> x = sparse_matrix_solving(mesh, free_vertexs, v1, v2, m, n);
+	QueryPerformanceCounter(&EndTime);   
+	std::cout << "运行时间（单位：s）：" << (double)(EndTime.QuadPart - BegainTime.QuadPart) / Frequency.QuadPart << std::endl;
 	for (int i = 0; i < mesh.vfh_size("vertex"); i++) {
 		if (mesh.get_locked(i) == false) {
 			int i_idx = free_vertexs[i];
-			mesh.set_tex(i, x[i_idx][0], x[i_idx + n][0]);
+			mesh.set_tex(i, x[i_idx], x[i_idx + n]);
 		}
 	}
 	double maxu = 1.0, maxv = 1.0, minu = 0.0, minv = 0.0;
@@ -550,21 +557,12 @@ void parameterization::show_matrix(Eigen::MatrixXd A, int m, int n){
 	//std::cout << sum << std::endl;
 }
 
-double** parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> free_vertexs, int v1, int v2, int m, int n){
+std::vector<double> parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> free_vertexs, int v1, int v2, int m, int n){
 	int nv = mesh.vfh_size("vertex");
 	int nv2 = 2 * nv;
-	
-	double** b = new double* [2 * n];
-	for (int i = 0; i < 2 * n; i++) {
-		b[i] = new double[1];
-		for (int j = 0; j < 1; j++) {
-			b[i][j] = 0;
-		}
-	}
-	
-	//Eigen::SparseMatrix<double> A(2 * n, 2 * n);
-	//Eigen::VectorXd b = Eigen::VectorXd::Zero(2 * n);
-	std::vector<Triplet> triplets;
+	std::vector<double> b(2 * n, 0);
+	std::vector<std::vector<Triplet>> A;
+	A.resize(2 * n);
 	int row = 0;
 	for (unsigned int i = 0; i < nv2; i++) {
 		int vi = i % nv;
@@ -629,12 +627,12 @@ double** parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> fr
 										sj1 += -sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "i") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "r");
 									}
 									if (mesh.get_locked(vj) == false) {
-										triplets.emplace_back(row, free_vertexs[vj], sj0);
-										triplets.emplace_back(row, free_vertexs[vj] + n, sj1);
+										A[row].emplace_back(row, free_vertexs[vj], sj0);
+										A[row].emplace_back(row, free_vertexs[vj] + n, sj1);
 									}
 									else {
-										b[row][0] -= sj0 * mesh.get_tex(vj, "u");
-										b[row][0] -= sj1 * mesh.get_tex(vj, "v");
+										b[row] -= sj0 * mesh.get_tex(vj, "u");
+										b[row] -= sj1 * mesh.get_tex(vj, "v");
 									}
 								}
 							}
@@ -643,76 +641,163 @@ double** parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> fr
 					h = mesh.next_halfedge(mesh.opposite_halfedge(h));
 				} while (h != hh);
 			}
-			triplets.emplace_back(row, free_vertexs[vi] + (i < nv ? 0 : n), si);
+			A[row].emplace_back(row, free_vertexs[vi] + (i < nv ? 0 : n), si);
+			sort(A[row].begin(), A[row].end());
 			row++;
 		}
 	}
-	//show_matrix(b, 2 * n, 1);
-
-	std::vector<double> D(2 * n, 0.0);
-	std::vector<std::vector<double>> L(n, std::vector<double>(2 * n, 0.0));
-
-	for (int j = 0; j < n; j++) {
-		double sum = 0.0;
-		for (int p = triplets[j].row; p < triplets[j + 1].row; p++) {
-			int i = triplets[p].col;
-			double l_ij = triplets[p].value;
-			for (int k = 0; k < j; k++) {
-				l_ij -= L[i][k] * L[j][k] * D[k];
-			}
-			if (i == j) {
-				D[i] = l_ij;
-				L[i][i] = 1.0;
-			}
-			else {
-				L[i][j] = l_ij / D[j];
-			}
-			sum += L[i][j] * L[i][j] * D[j];
-		}
-		D[j] -= sum;
-	}
-
-
-
-	/*std::vector<std::vector<Triplet>> A;
-	for (int i = 0; i < triplets.size(); i++) {
-		A[triplets[i].row].push_back(triplets[i]);
-	}
-	for (int i = 0; i < A.size(); i++) {
-		sort(A[i].begin(), A[i].end());
-	}
+	n = 2 * n;
+	
+	/*std::vector<std::unordered_map<Key, double, Key>>L;
+	L.resize(n);
+	std::vector<double> D(n, 0);
+	D[0] = A[0][0].value;
 	for (int i = 0; i < n; i++) {
-		double di = 0.0;
-		for (int j = 0; j <A[i].size(); j++) {
-			if (A[i][j].col == i) {
-				di = A[i][j].value;
+		L[i][{i,i}] = 1;
+	}
+	for (int k = 0; k < n; k++) {
+		for (int idx = 0; idx < A[k].size(); idx++) {
+			if (A[k][idx].col == k) {
+				D[k] = A[k][idx].value;
 			}
-			double sum = 0.0;
-			for (int k = 0; L[i][k].col < A[i][j].col; k++) {
-				for (int l = 0; l < L[A[i][j].col].size(); l++) {
-					if (L[i][k].col == L[A[i][j].col][l].col) {
-						sum += L[i][k].value * D[L[i][k].col] * L[A[i][j].col][l].value;
-					}
+		}
+		for (int t = 0; t < k; t++) {
+			auto it = L[k].find({ k,t });
+			if (it != L[k].end()) {
+				D[k] -= D[t] * L[k][{k, t}] * L[k][{k, t}];
+			}
+		}
+		for (int i = k + 1; i < n; i++) {
+			double sum = 0;
+			for (int t = 0; t < k; t++) {
+				auto it1 = L[k].find({ k,t });
+				auto it2 = L[i].find({ i,t });
+				if (it1 !=L[k].end() && it2 !=L[i].end()) {
+					sum += D[t] * L[i][{i, t}] * L[k][{k, t}];
 				}
 			}
-			L[i].emplace_back(i, A[i][j].col, (i == j) ? 1.0 : (A[i][j].value - sum) / D[j]);
+			int idxA = -1;
+			for (int idx = 0; idx < A[i].size(); idx++) {
+				if (A[i][idx].col == k) {
+					idxA = idx;
+				}
+			}
+			if (idxA != -1) {
+				L[i][{i,k}] = (A[i][idxA].value - sum) / D[k];
+			}
+			else if (idxA == -1 && sum != 0) {
+				L[i][{i,k}] = -sum / D[k];
+			}
 		}
-		double sum = 0.0;
-		for (int k = 0; k < i; ++k) {
-			sum += L[i][k].value * L[i][k].value * D[L[i][k].col];
+	}
+
+	std::vector<double> x(n, 0);
+	std::vector<double> y(n, 0);
+	y[0] = b[0];
+	for (int i = 0; i < n; i++) {
+		double sum = 0;
+		for (int k = 0; k < i; k++) {
+			auto it = L[i].find({ i,k });
+			if (it != L[i].end()) {
+				sum += L[i][{i, k}] * y[k];
+			}
 		}
-		D[i] = di - sum;
+		y[i] = b[i] - sum;
+	}
+	x[n - 1] = y[n - 1] / D[n - 1];
+	for (int i = n - 2; i >= 0; i--) {
+		double sum = 0;
+		for (int k = i + 1; k < n; k++) {
+			auto it = L[k].find({ k,i });
+			if (it != L[k].end()) {
+				sum += L[k][{k, i}] * x[k];
+			}
+		}
+		x[i] = y[i] / D[i] - sum;
 	}*/
 
 
-	
-	/*A.setFromTriplets(triplets.begin(), triplets.end());
-	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver(A);
-	Eigen::VectorXd x = solver.solve(b);*/
-	
-	double** x;
-	//show_matrix(x, 2 * n, 1);
-	return b;
+	std::vector<std::vector<double>>L;
+	L.resize(n, std::vector<double>(n, 0));
+	std::vector<double> D(n, 0);
+	D[0] = A[0][0].value;
+	for (int i = 0; i < n; i++) {
+		L[i][i] = 1;
+	}
+	for (int k = 0; k < n; k++) {
+		for (int idx = 0; idx < A[k].size(); idx++) {
+			if (A[k][idx].col == k) {
+				D[k] = A[k][idx].value;
+			}
+		}
+		for (int t = 0; t < k; t++) {
+			D[k] -= D[t] * L[k][t] * L[k][t];
+		}
+		for (int i = k + 1; i < n; i++) {
+			double sum = 0;
+			for (int t = 0; t < k; t++) {
+				sum += D[t] * L[i][t] * L[k][t];
+			}
+			int idxA = -1;
+			for (int idx = 0; idx < A[i].size(); idx++) {
+				if (A[i][idx].col == k) {
+					idxA = idx;
+				}
+			}
+			if (idxA != -1) {
+				L[i][k] = (A[i][idxA].value - sum) / D[k];
+			}
+			else if (idxA == -1 && sum != 0) {
+				L[i][k] = -sum / D[k];
+			}
+		}
+	}
+
+	std::vector<double> x(n, 0);
+	std::vector<double> y(n, 0);
+	y[0] = b[0];
+	for (int i = 0; i < n; i++) {
+		double sum = 0;
+		for (int k = 0; k < i; k++) {
+			sum += L[i][k] * y[k];
+		}
+		y[i] = b[i] - sum;
+	}
+	x[n - 1] = y[n - 1] / D[n - 1];
+	for (int i = n - 2; i >= 0; i--) {
+		double sum = 0;
+		for (int k = i + 1; k < n; k++) {
+			sum += L[k][i] * x[k];
+		}
+		x[i] = y[i] / D[i] - sum;
+	}L.resize(n, std::vector<double>(n, 0));
+	return x;
+}
+
+void parameterization::tripletToCSC(const std::vector<Triplet>& triplets, int n_rows, int n_cols, std::vector<int>& column_pointers, std::vector<int>& row_indices, std::vector<double>& nonzero_values){
+	column_pointers.resize(n_cols + 1, 0);
+	row_indices.clear();
+	nonzero_values.clear();
+
+	for (const Triplet& triplet : triplets) {
+		int col_idx = triplet.col;
+		column_pointers[col_idx + 1]++;
+	}
+
+	for (int i = 1; i <= n_cols; i++) {
+		column_pointers[i] += column_pointers[i - 1];
+	}
+
+	for (const Triplet& triplet : triplets) {
+		int row_idx = triplet.row;
+		int col_idx = triplet.col;
+		double value = triplet.value;
+
+		int csc_idx = column_pointers[col_idx];
+		row_indices.push_back(row_idx);
+		nonzero_values.push_back(value);
+		column_pointers[col_idx]++;
+	}
 }
 
 

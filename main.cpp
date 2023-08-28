@@ -13,7 +13,7 @@ int main() {
     mesh mesh;
     try
     {
-        mesh = io.read("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti.off");
+        mesh = io.read("C:\\Users\\ÑîºÀ\\Desktop\\2000.off");
     }
     catch (const std::exception& e)
     {
@@ -22,6 +22,6 @@ int main() {
     }
     parameterization parameterization;
     parameterization.Parameterization(mesh);
-    io.write("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti.off", mesh);      //nefertiti  merged_submaps_repair
+    io.write("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti_result.off", mesh);      //nefertiti  merged_submaps_repair
     return 0;
 }
