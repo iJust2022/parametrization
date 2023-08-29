@@ -286,7 +286,6 @@ int mesh::new_face(std::vector<int> face_point) {
 	return f;
 }
 
-//每次索引都是需要计算的，直接传入要计算的顶点本身，而不是索引，减少索引次数。
 double mesh::distance(int vv1, int vv2){
 	double d;
 	double dx = (Vertexs[vv1].pos.x - Vertexs[vv2].pos.x) * (Vertexs[vv1].pos.x - Vertexs[vv2].pos.x);
@@ -332,7 +331,6 @@ void mesh::set_pos2d(int v, double xi, double yi){
 	Vertexs[v].pos2d.y = yi;
 }
 
-//TODO: 用字符串来索引属性，太慢了。想想怎么改更合理。
 double mesh::get_pos2d(int v, std::string s) {
 	if (s == "x") {
 		return Vertexs[v].pos2d.x;

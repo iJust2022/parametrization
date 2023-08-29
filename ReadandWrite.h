@@ -9,10 +9,10 @@
 
 
 
-class io{
+class ReadandWrite{
 public:
-	io();
-	~io();
+	ReadandWrite();
+	~ReadandWrite();
 	mesh read(std::string file);
 	void write(std::string file, mesh& mesh);
 	

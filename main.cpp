@@ -4,16 +4,16 @@
 #include <iostream>
 #include <cstring>
 #include <iterator>
-#include"mesh.h"
-#include"io.h"
-#include"parameterization.h"
+#include "mesh.h"
+#include "parameterization.h"
+#include "ReadandWrite.h"
 
 int main() {
-	io io;
+	ReadandWrite ReadandWrite;
     mesh mesh;
     try
     {
-        mesh = io.read("C:\\Users\\ÑîºÀ\\Desktop\\2000.off");
+        mesh = ReadandWrite.read("C:\\Users\\ÑîºÀ\\Desktop\\2000.off");
     }
     catch (const std::exception& e)
     {
@@ -22,6 +22,6 @@ int main() {
     }
     parameterization parameterization;
     parameterization.Parameterization(mesh);
-    io.write("C:\\Users\\ÑîºÀ\\Desktop\\nefertiti_result.off", mesh);      //nefertiti  merged_submaps_repair
+    ReadandWrite.write("C:\\Users\\ÑîºÀ\\Desktop\\2000_result.off", mesh);      //nefertiti  merged_submaps_repair
     return 0;
 }

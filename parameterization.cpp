@@ -1,5 +1,10 @@
 #include "parameterization.h"
 
+//#include <unordered_map>
+//using namespace std;
+#include <boost/unordered_map.hpp>
+using namespace boost;
+
 parameterization::parameterization() {
 
 }
@@ -33,14 +38,16 @@ void parameterization::Parameterization(mesh& mesh){
 			mesh.set_tex(i, x(i_idx, 0), x(i_idx + n, 0));
 		}
 	}*/
-	LARGE_INTEGER BegainTime;
+	LARGE_INTEGER BeginTime;
 	LARGE_INTEGER EndTime;
 	LARGE_INTEGER Frequency;
 	QueryPerformanceFrequency(&Frequency);
-	QueryPerformanceCounter(&BegainTime);
+	QueryPerformanceCounter(&BeginTime);
 	std::vector<double> x = sparse_matrix_solving(mesh, free_vertexs, v1, v2, m, n);
+	//std::vector<double> x = sparse_matrix_solving_vector(mesh, free_vertexs, v1, v2, m, n);
 	QueryPerformanceCounter(&EndTime);   
-	std::cout << "运行时间（单位：s）：" << (double)(EndTime.QuadPart - BegainTime.QuadPart) / Frequency.QuadPart << std::endl;
+	std::cout << "运行时间（单位：s）：" << (double)(EndTime.QuadPart - BeginTime.QuadPart) / Frequency.QuadPart << std::endl;
+
 	for (int i = 0; i < mesh.vfh_size("vertex"); i++) {
 		if (mesh.get_locked(i) == false) {
 			int i_idx = free_vertexs[i];
@@ -558,6 +565,394 @@ void parameterization::show_matrix(Eigen::MatrixXd A, int m, int n){
 }
 
 std::vector<double> parameterization::sparse_matrix_solving(mesh& mesh, std::vector<int> free_vertexs, int v1, int v2, int m, int n){
+	
+	
+	int nv = mesh.vfh_size("vertex");
+	int nv2 = 2 * nv;
+	/*
+	std::vector<double> b(2 * n, 0);
+	std::vector<std::vector<Triplet>> A;
+	A.resize(2 * n);
+	int row = 0;
+	for (unsigned int i = 0; i < nv2; i++) {
+		int vi = i % nv;
+		int sign;
+		std::string  c0, c1;
+		if (i < nv){
+			sign = 1.0;
+			c0 = "r";
+			c1 = "i";
+		}
+		else{
+			sign = -1.0;
+			c0 = "i";
+			c1 = "r";
+		}
+		if (mesh.get_locked(vi) == false) {
+			double si = 0;
+			int h = mesh.out_halfedge(vi);
+			const int hh = h;
+			if (mesh.is_valid(h)) {
+				std::vector<bool> is_select;
+				is_select.resize(nv, false);
+				do {
+					int f = mesh.get_face(h);
+					int fi, vj;
+					double sj0, sj1;
+					if (mesh.is_valid(f)) {
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) == vi) {
+								fi = l;
+								si += mesh.get_face_W(f, l, "r") * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, l, "i") * mesh.get_face_W(f, l, "i");
+							}
+						}
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) != vi) {
+								vj = mesh.get_face_p(f, l);
+								if (is_select[vj] == false) {
+									is_select[vj] = true;
+									sj0 = 0;
+									sj1 = 0;
+									sj0 += sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "i");
+									sj1 += -sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "i") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "r");
+									int h0 = mesh.get_face_halfedge(f);
+									while (mesh.to_vertex(h0) != vj) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									if (mesh.to_vertex(mesh.next_halfedge(h0)) == vi) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									int ff = mesh.get_face(mesh.opposite_halfedge(h0));
+									if (mesh.is_valid(ff)) {
+										int li = 0, lj = 0;
+										for (int k = 0; k < 3; k++) {
+											if (mesh.get_face_p(ff, k) == vi) {
+												li = k;
+											}
+											if (mesh.get_face_p(ff, k) == vj) {
+												lj = k;
+											}
+										}
+										sj0 += sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "r") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "i");
+										sj1 += -sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "i") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "r");
+									}
+									if (mesh.get_locked(vj) == false) {
+										A[row].emplace_back(row, free_vertexs[vj], sj0);
+										A[row].emplace_back(row, free_vertexs[vj] + n, sj1);
+									}
+									else {
+										b[row] -= sj0 * mesh.get_tex(vj, "u");
+										b[row] -= sj1 * mesh.get_tex(vj, "v");
+									}
+								}
+							}
+						}
+					}
+					h = mesh.next_halfedge(mesh.opposite_halfedge(h));
+				} while (h != hh);
+			}
+			A[row].emplace_back(row, free_vertexs[vi] + (i < nv ? 0 : n), si);
+			sort(A[row].begin(), A[row].end());
+			row++;
+		}
+	}
+	QueryPerformanceCounter(&EndTime);
+	std::cout << "1运行时间（单位：s）：" << (double)(EndTime.QuadPart - BeginTime.QuadPart) / Frequency.QuadPart << std::endl;
+	
+	n = 2 * n;
+	int num1 = 0, num2 = 0;
+	std::vector<std::vector<double>>L;
+	L.resize(n, std::vector<double>(n, 0));
+	std::vector<double> D(n, 0);
+	D[0] = A[0][0].value;
+	for (int i = 0; i < n; i++) {
+		L[i][i] = 1;
+	}
+	for (int k = 0; k < n; k++) {
+		for (int idx = 0; idx < A[k].size(); idx++) {
+			if (A[k][idx].col == k) {
+				D[k] = A[k][idx].value;
+			}
+		}
+		for (int t = 0; t < k; t++) {
+			num1++;
+			D[k] -= D[t] * L[k][t] * L[k][t];
+		}
+		for (int i = k + 1; i < n; i++) {
+			double sum = 0;
+			for (int t = 0; t < k; t++) {
+				num2++;
+				sum += D[t] * L[i][t] * L[k][t];
+			}
+			int idxA = -1;
+			for (int idx = 0; idx < A[i].size(); idx++) {
+				if (A[i][idx].col == k) {
+					idxA = idx;
+				}
+			}
+			if (idxA != -1) {
+				L[i][k] = (A[i][idxA].value - sum) / D[k];
+			}
+			else if (idxA == -1 && sum != 0) {
+				L[i][k] = -sum / D[k];
+			}
+		}
+	}
+	QueryPerformanceCounter(&EndTime);
+	std::cout << num1 << "  " << num2 << "  2运行时间（单位：s）：" << (double)(EndTime.QuadPart - BeginTime.QuadPart) / Frequency.QuadPart << std::endl;
+	
+	std::vector<double> x(n, 0);
+	std::vector<double> y(n, 0);
+	y[0] = b[0];
+	for (int i = 0; i < n; i++) {
+		double sum = 0;
+		for (int k = 0; k < i; k++) {
+			sum += L[i][k] * y[k];
+		}
+		y[i] = b[i] - sum;
+	}
+	x[n - 1] = y[n - 1] / D[n - 1];
+	for (int i = n - 2; i >= 0; i--) {
+		double sum = 0;
+		for (int k = i + 1; k < n; k++) {
+			sum += L[k][i] * x[k];
+		}
+		x[i] = y[i] / D[i] - sum;
+	}
+	QueryPerformanceCounter(&EndTime);
+	std::cout << "3运行时间（单位：s）：" << (double)(EndTime.QuadPart - BeginTime.QuadPart) / Frequency.QuadPart << std::endl;
+	*/
+
+	
+	std::vector<double> b(2 * n, 0);
+	std::vector<unordered_map<int, double>> A;
+	A.resize(2 * n);
+	//for (auto& line : A)
+	//{
+	//	line.rehash(2048);
+	//}
+	int row = 0;
+	for (unsigned int i = 0; i < nv2; i++) {
+		int vi = i % nv;
+		int sign;
+		std::string  c0, c1;
+		if (i < nv) {
+			sign = 1.0;
+			c0 = "r";
+			c1 = "i";
+		}
+		else {
+			sign = -1.0;
+			c0 = "i";
+			c1 = "r";
+		}
+		if (mesh.get_locked(vi) == false) {
+			double si = 0;
+			int h = mesh.out_halfedge(vi);
+			const int hh = h;
+			if (mesh.is_valid(h)) {
+				std::vector<bool> is_select;
+				is_select.resize(nv, false);
+				do {
+					int f = mesh.get_face(h);
+					int fi, vj;
+					double sj0, sj1;
+					if (mesh.is_valid(f)) {
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) == vi) {
+								fi = l;
+								si += mesh.get_face_W(f, l, "r") * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, l, "i") * mesh.get_face_W(f, l, "i");
+							}
+						}
+						for (int l = 0; l < 3; l++) {
+							if (mesh.get_face_p(f, l) != vi) {
+								vj = mesh.get_face_p(f, l);
+								if (is_select[vj] == false) {
+									is_select[vj] = true;
+									sj0 = 0;
+									sj1 = 0;
+									sj0 += sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "r") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "i");
+									sj1 += -sign * mesh.get_face_W(f, fi, c0) * mesh.get_face_W(f, l, "i") + mesh.get_face_W(f, fi, c1) * mesh.get_face_W(f, l, "r");
+									int h0 = mesh.get_face_halfedge(f);
+									while (mesh.to_vertex(h0) != vj) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									if (mesh.to_vertex(mesh.next_halfedge(h0)) == vi) {
+										h0 = mesh.next_halfedge(h0);
+									}
+									int ff = mesh.get_face(mesh.opposite_halfedge(h0));
+									if (mesh.is_valid(ff)) {
+										int li = 0, lj = 0;
+										for (int k = 0; k < 3; k++) {
+											if (mesh.get_face_p(ff, k) == vi) {
+												li = k;
+											}
+											if (mesh.get_face_p(ff, k) == vj) {
+												lj = k;
+											}
+										}
+										sj0 += sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "r") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "i");
+										sj1 += -sign * mesh.get_face_W(ff, li, c0) * mesh.get_face_W(ff, lj, "i") + mesh.get_face_W(ff, li, c1) * mesh.get_face_W(ff, lj, "r");
+									}
+									if (mesh.get_locked(vj) == false) {
+										A[row][free_vertexs[vj]] = sj0;
+										A[row][free_vertexs[vj] + n] = sj1;
+									}
+									else {
+										b[row] -= sj0 * mesh.get_tex(vj, "u");
+										b[row] -= sj1 * mesh.get_tex(vj, "v");
+									}
+								}
+							}
+						}
+					}
+					h = mesh.next_halfedge(mesh.opposite_halfedge(h));
+				} while (h != hh);
+			}
+			A[row][free_vertexs[vi] + (i < nv ? 0 : n)] = si;
+			row++;
+		}
+	}
+	n = 2 * n;
+	
+	LARGE_INTEGER Frequency;
+	QueryPerformanceFrequency(&Frequency);
+
+	struct hasher_int
+	{
+		size_t  operator()  (const int i) const
+		{
+			return i;
+		}
+	};
+	//std::vector<unordered_map<int, double, hasher_int>>L;
+	std::vector<unordered_map<int, double>>L;
+	L.resize(n);
+	//for (auto& line : L)
+	//{
+	//	line.rehash(2048);
+	//}
+	std::vector<double> D(n, 0);
+	D[0] = A[0][0];
+	for (int i = 0; i < n; i++) {
+		L[i][i] = 1;
+	}
+	LONGLONG step1 = 0, step2 = 0, step1_count = 0, step2_count = 0;
+	LONGLONG step2_find1 = 0, step2_find2 = 0, step2_find1_count = 0, step2_find2_count = 0;
+	for (int k = 0; k < n; k++) {
+		if (k % 100 == 0)
+			std::cout << "current line: [" << k << "/" << n << "];" << std::endl;
+		D[k] = A[k][k];
+		LARGE_INTEGER BeginTime1;
+		LARGE_INTEGER EndTime1;
+		QueryPerformanceCounter(&BeginTime1);
+		for (auto it = L[k].begin(); it != L[k].end(); ++it) {
+			int t = it->first;
+			if (t < k) {
+				double v = it->second;
+				D[k] -= D[t] * v * v;
+			}
+		}
+		QueryPerformanceCounter(&EndTime1);
+		step1 += EndTime1.QuadPart - BeginTime1.QuadPart;
+		++step1_count;
+
+		LARGE_INTEGER BeginTime2;
+		LARGE_INTEGER EndTime2;
+		QueryPerformanceCounter(&BeginTime2);
+		for (int i = k + 1; i < n; i++) {
+			double sum = 0;
+			
+			
+			for (auto it1 = L[i].begin(); it1 != L[i].end(); ++it1) {
+				int t = it1->first;
+				if (t < k) {
+					double v1 = it1->second;
+					LARGE_INTEGER BeginTime3;
+					LARGE_INTEGER EndTime3;
+					//QueryPerformanceCounter(&BeginTime3);
+					auto it2 = L[k].find(t);
+					//auto it2 = L[k].end();
+					//auto it21 = L[k].end();
+					//for (int i = 10; i >= 0; --i)
+					//{
+					//	it21 = L[k].find(t + i);
+					//	it2 = it21;
+					//}
+					//QueryPerformanceCounter(&EndTime3);
+					//step2_find1 += EndTime3.QuadPart - BeginTime3.QuadPart;
+					++step2_find1_count;
+					if (it2 != L[k].end()) {
+						double v2 = it2->second;
+						sum += D[t] * v1 * v2;
+					}
+				}
+			}
+			
+
+			LARGE_INTEGER BeginTime4;
+			LARGE_INTEGER EndTime4;
+			//QueryPerformanceCounter(&BeginTime4);
+			auto it = A[i].find(k);
+			//auto it = A[i].end();
+			//auto it1 = A[i].end();
+			//for (int i = 10; i >= 0; --i)
+			//{
+			//	it1 = A[i].find(k + i);
+			//	it = it1;
+			//}
+			//QueryPerformanceCounter(&EndTime4);
+			//step2_find2 += EndTime4.QuadPart - BeginTime4.QuadPart;
+			++step2_find2_count;
+			double inverse_D_k = 1.0 / D[k];
+			if (it != A[i].end()) {
+				L[i][k] = (it->second - sum) * inverse_D_k;
+			} else if (it == A[i].end() && sum != 0) {
+				L[i][k] = -sum * inverse_D_k;
+			}
+
+		}
+		QueryPerformanceCounter(&EndTime2);
+		step2 += EndTime2.QuadPart - BeginTime2.QuadPart;
+		++step2_count;
+	}
+
+	std::cout << "step1: run" << step1_count << ", total cost: " << ((double)step1 / Frequency.QuadPart) << " secs, avg cost:" << ((double)step1 / Frequency.QuadPart) / step1_count << std::endl;
+	std::cout << "step2: run" << step2_count << ", total cost: " << ((double)step2 / Frequency.QuadPart) << " secs, avg cost:" << ((double)step2 / Frequency.QuadPart) / step2_count << std::endl;
+	std::cout << "|-step2[find_1]: run" << step2_find1_count << ", total cost: " << ((double)step2_find1 / Frequency.QuadPart) << " secs, avg cost:" << ((double)step2_find1 / Frequency.QuadPart) / step2_find1_count << std::endl;
+	std::cout << "|-step2[find_2]: run" << step2_find2_count << ", total cost: " << ((double)step2_find2 / Frequency.QuadPart) << " secs, avg cost:" << ((double)step2_find1 / Frequency.QuadPart) / step2_find2_count << std::endl;
+
+	
+	std::vector<double> x(n, 0);
+	std::vector<double> y(n, 0);
+	y[0] = b[0];
+	for (int i = 0; i < n; i++) {
+		double sum = 0;
+		for (auto it = L[i].begin(); it != L[i].end(); ++it) {
+			int k = it->first;
+			if (k < i) {
+				double v = it->second;
+				sum += v * y[k];
+			}
+		}
+		y[i] = b[i] - sum;
+	}
+	x[n - 1] = y[n - 1] / D[n - 1];
+	for (int i = n - 2; i >= 0; i--) {
+		double sum = 0;
+		for (int k = i + 1; k < n; k++) {
+			auto it = L[k].find(i);
+			if (it != L[k].end()) {
+				double v = it->second;
+				sum += v * x[k];
+			}
+		}
+		x[i] = y[i] / D[i] - sum;
+	}	
+	return x;
+}
+
+std::vector<double> parameterization::sparse_matrix_solving_vector(mesh& mesh, std::vector<int> free_vertexs, int v1, int v2, int m, int n){
 	int nv = mesh.vfh_size("vertex");
 	int nv2 = 2 * nv;
 	std::vector<double> b(2 * n, 0);
@@ -647,76 +1042,7 @@ std::vector<double> parameterization::sparse_matrix_solving(mesh& mesh, std::vec
 		}
 	}
 	n = 2 * n;
-	
-	/*std::vector<std::unordered_map<Key, double, Key>>L;
-	L.resize(n);
-	std::vector<double> D(n, 0);
-	D[0] = A[0][0].value;
-	for (int i = 0; i < n; i++) {
-		L[i][{i,i}] = 1;
-	}
-	for (int k = 0; k < n; k++) {
-		for (int idx = 0; idx < A[k].size(); idx++) {
-			if (A[k][idx].col == k) {
-				D[k] = A[k][idx].value;
-			}
-		}
-		for (int t = 0; t < k; t++) {
-			auto it = L[k].find({ k,t });
-			if (it != L[k].end()) {
-				D[k] -= D[t] * L[k][{k, t}] * L[k][{k, t}];
-			}
-		}
-		for (int i = k + 1; i < n; i++) {
-			double sum = 0;
-			for (int t = 0; t < k; t++) {
-				auto it1 = L[k].find({ k,t });
-				auto it2 = L[i].find({ i,t });
-				if (it1 !=L[k].end() && it2 !=L[i].end()) {
-					sum += D[t] * L[i][{i, t}] * L[k][{k, t}];
-				}
-			}
-			int idxA = -1;
-			for (int idx = 0; idx < A[i].size(); idx++) {
-				if (A[i][idx].col == k) {
-					idxA = idx;
-				}
-			}
-			if (idxA != -1) {
-				L[i][{i,k}] = (A[i][idxA].value - sum) / D[k];
-			}
-			else if (idxA == -1 && sum != 0) {
-				L[i][{i,k}] = -sum / D[k];
-			}
-		}
-	}
-
-	std::vector<double> x(n, 0);
-	std::vector<double> y(n, 0);
-	y[0] = b[0];
-	for (int i = 0; i < n; i++) {
-		double sum = 0;
-		for (int k = 0; k < i; k++) {
-			auto it = L[i].find({ i,k });
-			if (it != L[i].end()) {
-				sum += L[i][{i, k}] * y[k];
-			}
-		}
-		y[i] = b[i] - sum;
-	}
-	x[n - 1] = y[n - 1] / D[n - 1];
-	for (int i = n - 2; i >= 0; i--) {
-		double sum = 0;
-		for (int k = i + 1; k < n; k++) {
-			auto it = L[k].find({ k,i });
-			if (it != L[k].end()) {
-				sum += L[k][{k, i}] * x[k];
-			}
-		}
-		x[i] = y[i] / D[i] - sum;
-	}*/
-
-
+	int num1 = 0, num2 = 0;
 	std::vector<std::vector<double>>L;
 	L.resize(n, std::vector<double>(n, 0));
 	std::vector<double> D(n, 0);
@@ -731,11 +1057,13 @@ std::vector<double> parameterization::sparse_matrix_solving(mesh& mesh, std::vec
 			}
 		}
 		for (int t = 0; t < k; t++) {
+			num1++;
 			D[k] -= D[t] * L[k][t] * L[k][t];
 		}
 		for (int i = k + 1; i < n; i++) {
 			double sum = 0;
 			for (int t = 0; t < k; t++) {
+				num2++;
 				sum += D[t] * L[i][t] * L[k][t];
 			}
 			int idxA = -1;
@@ -770,7 +1098,7 @@ std::vector<double> parameterization::sparse_matrix_solving(mesh& mesh, std::vec
 			sum += L[k][i] * x[k];
 		}
 		x[i] = y[i] / D[i] - sum;
-	}L.resize(n, std::vector<double>(n, 0));
+	}	
 	return x;
 }
 

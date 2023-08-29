@@ -1,11 +1,12 @@
-#include "io.h"
-io::io(){
+#include "ReadandWrite.h"
+
+ReadandWrite::ReadandWrite(){
 
 }
-io::~io(){
+ReadandWrite::~ReadandWrite(){
 
 }
-mesh io::read(std::string file) {
+mesh ReadandWrite::read(std::string file) {
     mesh mesh;
 	std::string ext = file.substr(file.find_last_of('.') + 1);
 	if (ext == "off") {
@@ -17,7 +18,7 @@ mesh io::read(std::string file) {
 	}
     return mesh;
 }
-void io::write(std::string file, mesh& mesh){
+void ReadandWrite::write(std::string file, mesh& mesh){
     std::fstream f;
     f.open(file, std::ios::out);
     f << "OFF" << std::endl;
@@ -31,7 +32,7 @@ void io::write(std::string file, mesh& mesh){
     f.close();
     return;
 }
-void io::read_off(std::string file, mesh& mesh) {
+void ReadandWrite::read_off(std::string file, mesh& mesh) {
 	std::vector<char> val;
 	bool has_texcoords = false;
 	bool has_normals = false;
@@ -114,10 +115,10 @@ void io::read_off(std::string file, mesh& mesh) {
     in.close();
 }
 
-void io::read_off_binary(mesh& mesh, std::ifstream& in, const bool has_normals, const bool has_texcoords, const bool has_colors) {
+void ReadandWrite::read_off_binary(mesh& mesh, std::ifstream& in, const bool has_normals, const bool has_texcoords, const bool has_colors) {
     return;
 }
-void io::read_off_ascii(mesh& mesh, std::ifstream& in, const bool has_normals, const bool has_texcoords, const bool has_colors) {
+void ReadandWrite::read_off_ascii(mesh& mesh, std::ifstream& in, const bool has_normals, const bool has_texcoords, const bool has_colors) {
     std::vector<int> vfh_size;
     std::string line;
     std::getline(in, line);

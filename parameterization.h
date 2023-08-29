@@ -7,8 +7,11 @@
 #include<Eigen/LU>
 #include <Eigen/Sparse>
 #include <functional>
-#include <unordered_map>
 #include <windows.h> 
+#include<boost/filesystem.hpp>
+
+
+
 
 #pragma once
 class parameterization{
@@ -28,6 +31,12 @@ private:
 	struct Key {
 		int row;
 		int col;
+		/*size_t operator()(const Key& key) const {
+			size_t h1 = std::hash<int>{}(key.row);
+			size_t h2 = std::hash<int>{}(key.col);
+			return h1 ^ (h2 << 1);
+		}*/
+
 		size_t operator()(const Key& key) const {
 			size_t h1 = std::hash<int>{}(key.row);
 			size_t h2 = std::hash<int>{}(key.col);
@@ -57,6 +66,7 @@ private:
 	Eigen::MatrixXd eigen_create_matrix_solver(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
 	void show_matrix(Eigen::MatrixXd A, int m, int n);
 	std::vector<double> sparse_matrix_solving(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
+	std::vector<double> sparse_matrix_solving_vector(mesh& mesh, std::vector<int>free_vertexs, int v1, int v2, int m, int n);
 	void tripletToCSC(const std::vector<Triplet>& triplets, int n_rows, int n_cols, std::vector<int>& column_pointers, std::vector<int>& row_indices, std::vector<double>& nonzero_values);
 
 
